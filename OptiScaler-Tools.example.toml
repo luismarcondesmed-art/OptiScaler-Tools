@@ -1,0 +1,27 @@
+# false starts CLI mode; true opens the graphical interface without arguments.
+[app]
+gui = true
+open_output = true
+
+[game]
+executable = ''
+# Automatic order: dxgi -> asi + ASI Loader/version.dll -> winmm.
+proxy = "auto"
+# auto checks official game support; off skips OptiPatcher.
+optipatcher = "auto"
+
+# Default profile for newly prepared packages. The editor can also edit an installed game INI.
+[ini]
+dx11_upscaler = "auto"
+dx12_upscaler = "auto"
+vulkan_upscaler = "auto"
+fg_enabled = "auto"
+fg_input = "nvngxfg"
+fg_output = "fsrfg"
+fg_replacement = "Combo"
+fsr_upscaler_index = "auto"
+fsr_fg_index = "auto"
+fsr4_model = "auto"
+dlss_preset = "auto"
+# auto | off | streamline (partial) | full
+spoofing = "auto"

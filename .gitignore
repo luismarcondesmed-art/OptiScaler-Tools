@@ -1,0 +1,20 @@
+# Local configuration, game paths and user data
+OptiScaler-Tools.toml
+*.bak
+*.tmp
+output/
+source/.cache/
+.self-test-*/
+.ui-test-*/
+
+# Locally supplied components and built executables
+*.dll
+*.exe
+*.7z
+*.zip
+!source/**/.gitkeep
+
+# Editor and build state
+.vs/
+bin/
+obj/
