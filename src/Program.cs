@@ -307,6 +307,7 @@ internal static partial class Program
             CopyTree(streamline,Path.Combine(plugins,"streamline"));
             string amd=Path.Combine(SourceRoot,"amd_files");
             if(Directory.Exists(amd)) foreach(string file in Directory.GetFiles(amd,"*.dll")) File.Copy(file,Path.Combine(plugins,Path.GetFileName(file)),true);
+            File.Copy(ini,Path.Combine(plugins,"OptiScaler-Tools.defaults.ini"),true);
             UpdateIni(ini);
             ApplyProfile(ini,Settings);
             string streamVersion=ReadStreamlineTag();

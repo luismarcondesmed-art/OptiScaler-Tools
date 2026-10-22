@@ -4,11 +4,11 @@ A portable Windows app for preparing OptiScaler nightlies, installing them into 
 
 ## Interface
 
-The WPF interface uses a dark slate palette, translucent surfaces, rounded controls, vector sidebar icons, and Segoe UI Variable Text with a Segoe UI fallback.
+The WPF interface uses a neutral charcoal palette inspired by ChatGPT for Windows, subtle Mica, rounded controls, vector sidebar icons, and Segoe UI Variable Text with a Segoe UI fallback.
 
 - **1. Update OptiScaler** - one **Update** button, with **Open latest** and **Update Streamline** underneath. Detailed activity is collapsed until needed.
 - **2. Install** - choose the actual game executable, a prepared nightly, and a load method. **Install** is the primary action. **Open folder** opens the game directory; **Edit OptiScaler.ini** opens the installed file directly in its associated editor.
-- **Edit .ini** - separate groups for Upscaling, Frame generation, and GPU spoofing. Hardware-specific model controls are under **Models and default profile**.
+- **Edit .ini** - separate groups for Upscaling, Frame generation, and GPU spoofing. Choose **OptiScaler package** or **Installed application**, then the nightly or registered game. Hardware-specific controls and profiles are under **Models and profiles**.
 - **Logs / setup** - session history, severity and text filters, and the GUI/CLI and download preferences.
 
 The grouping follows OptiScaler's own upscaling and frame-generation input/output concepts. This is a separate application, not an official OptiScaler manager.
@@ -26,14 +26,16 @@ The app uses dark controls throughout and requests native dark Mica using `DWMWA
 
 ## Editing an INI
 
-1. Choose the prepared package, the installed game's INI, or another file.
+1. Choose **OptiScaler package** and a prepared nightly, or **Installed application** and a registered game. **Browse .exe** opens the INI beside another application executable. This selection is independent of the Install page.
 2. Use **Quick controls** for common options, or **All settings** to edit every setting present in the selected file. Filter by section or search by key, value, or description.
 3. Hover over a key or value to read the original multi-line and inline INI comments. Grouped settings share their preceding description. Keys without a description say so. Tooltips stay visible for up to one minute.
 4. Use **Save changes** to write the changes. A `.bak` copy preserves the previous file.
 
 Only edited keys are changed, in their own sections. Unrecognized values are shown as **Current: ...** and are retained unless changed. Other settings, comments, inline descriptions, spacing on untouched lines, and sections are preserved. Values entered in All settings synchronize with Quick controls. Searching or switching views retains unsaved changes.
 
-**Predefined values** loads the application's built-in profile into the editor. It does not write the file until **Save changes** is used. Its defaults are:
+**Reset to defaults** stages all settings defined by the original INI shipped with the selected release, including model, input/output, and spoofing values. The original template is saved before this app applies its profile, at `OptiScaler/OptiScaler-Tools.defaults.ini`, and accompanies game installations. For older managed installations, the editor can use the matching prepared nightly's original template. Reset never borrows defaults from a different release. It keeps custom keys without a known default, changes only the selected file after **Save changes**, and creates a `.bak` backup. If no matching template exists, reset is disabled with an explanation; prepare the matching package or update the managed game first.
+
+**Recommended profile**, under **Models and profiles**, loads the application's built-in recommendations into the editor. It does not write the file until **Save changes** is used. Its defaults are:
 
 | Setting | Predefined value |
 | --- | --- |
@@ -45,7 +47,7 @@ Only edited keys are changed, in their own sections. Unrecognized values are sho
 | FSR backend/model and DLSS preset | Automatic |
 | GPU spoofing | Automatic |
 
-**Reload** discards staged values after confirmation and reloads the selected file. Under **Models and default profile**, **Use saved profile** stages the TOML profile instead of the built-in values; **Save as default profile** saves the current selections for future packages. An existing INI with custom spoofing switches can be saved directly; choose a named spoofing preset before saving a reusable TOML profile.
+**Reload** discards staged values after confirmation and reloads the selected file. Under **Models and profiles**, **Saved profile** stages the TOML profile instead of the built-in values; **Save profile** saves the current selections for future packages. An existing INI with custom spoofing switches can be saved directly; choose a named spoofing preset before saving a reusable TOML profile.
 
 The editor explains invalid NvngxFG/XeFG or NvngxFG/DLSSG combinations inline and disables saving until they are corrected. This input requires FSR FG output in the supported nightly. FSR indices, FP8/INT8 support, and DLSS presets still depend on the GPU and installed libraries.
 
@@ -133,7 +135,7 @@ A failed or missing game does not stop later games from updating. Per-game resul
 
 Select a game to **Open folder**, **Edit INI**, or **Remove from list**. Removing a game does not delete or uninstall its files; it also prevents history discovery from automatically re-adding it. Explicit import adds it again. The list and its backup are saved locally at `source/.cache/installed-games.json` and `.json.bak`; keep that file when moving the app to another folder. It is excluded from GitHub and portable release packages.
 
-Keep **both version 1.1 EXEs** together. Batch updates reject an older setup helper before launching it, because older helpers cannot preserve each game's INI.
+Keep **both current EXEs** together. Batch updates reject an older setup helper before launching it, because older helpers cannot preserve each game's INI.
 
 CLI equivalents:
 
@@ -175,4 +177,4 @@ Keep both EXEs, the TOML, and `source/` together. The main EXE also embeds a DLS
 
 `Build.ps1` uses the Windows .NET Framework 4.8 compiler, WPF, and the embedded `src/Theme.xaml`, builds both executables, and runs the engine and installer tests. No Python, browser, SDK, or third-party UI package is required. The executables are unsigned.
 
-`--ui-test` renders every WPF page and verifies the update flow, section-aware editing, full-file editing, comment tooltips, search persistence, synchronization between views, inline validation, and staged predefined values. The engine tests cover architecture selection, cache integrity, TOML, extraction, migration, proxy order, ASI Loader, preserving other mods, rollback, and helper execution against synthetic game folders. API and patcher tests use simulated HTTP responses. These checks do not prove download availability or compatibility inside a running real game.
+`--ui-test` renders every WPF page and verifies the update flow, section-aware editing, full-file editing, rendered text visibility, comment tooltips, search persistence, independent package/application selection, per-target original-default resets, synchronization between views, and inline validation. The engine tests cover architecture selection, cache integrity, TOML, extraction, migration, proxy order, ASI Loader, preserving other mods, rollback, and helper execution against synthetic game folders. API and patcher tests use simulated HTTP responses. These checks do not prove download availability or compatibility inside a running real game.

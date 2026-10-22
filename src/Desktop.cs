@@ -118,7 +118,7 @@ internal static partial class Program
             var window=new MainWindow();window.WindowStartupLocation=System.Windows.WindowStartupLocation.Manual;window.Left=-20000;window.Top=-20000;
             var frame=new System.Windows.Threading.DispatcherFrame();
             window.ContentRendered+=async(s,e)=> {
-                try {await window.TestUpdate();Check(File.Exists(Path.Combine(LatestBuild(),"optiscaler","streamline","sl.test.dll"))&&window.ReadyAfterTest,"Update completes through the WPF interface without blocking the window");window.TestIniEditor();await window.TestGameLibrary();}
+                try {await window.TestUpdate();Check(File.Exists(Path.Combine(LatestBuild(),"optiscaler","streamline","sl.test.dll"))&&window.ReadyAfterTest,"Update completes through the WPF interface without blocking the window");window.TestIniEditor();await window.TestGameLibrary();await window.TestEditorWorkflow();}
                 catch(Exception ex){failure=ex;}
                 finally{window.Close();frame.Continue=false;}
             };
