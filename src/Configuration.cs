@@ -121,7 +121,7 @@ internal static partial class Program
         internal string Get(string section,string key) {
             var entry=Entries().FirstOrDefault(x=>x.Section.Equals(section,StringComparison.OrdinalIgnoreCase)&&x.Key.Equals(key,StringComparison.OrdinalIgnoreCase));return entry==null?"auto":entry.Value;
         }
-        internal void Set(string section,string key,string value) {
+        internal void Set(string section,string key,string value,string description=null) {
             if(value.IndexOfAny(new[]{'\r','\n'})>=0) throw new AppError("E_INI",40,"Invalid INI value.");
             string current="";int start=-1,end=lines.Count;
             for(int i=0;i<lines.Count;i++) {
@@ -129,13 +129,13 @@ internal static partial class Program
                 if(h.Success) {if(start>=0){end=i;break;}current=h.Groups[1].Value;if(current.Equals(section,StringComparison.OrdinalIgnoreCase)) start=i;}
             }
             if(start<0 && section.Length==0){start=-1;end=lines.FindIndex(x=>Regex.IsMatch(x,@"^\s*\["));if(end<0)end=lines.Count;}
-            else if(start<0) {lines.Add("");lines.Add("["+section+"]");lines.Add(key+"="+value);return;}
+            else if(start<0) {lines.Add("");lines.Add("["+section+"]");if(!string.IsNullOrWhiteSpace(description))lines.AddRange(description.Split('\n').Select(x=>"; "+x.TrimEnd('\r')));lines.Add(key+"="+value);return;}
             bool found=false;
             for(int i=start+1;i<end;i++) {
                 var match=Regex.Match(lines[i],@"^(\s*"+Regex.Escape(key)+@"\s*=\s*)(.*)$",RegexOptions.IgnoreCase);
                 if(match.Success){string tail=match.Groups[2].Value;int split=CommentStart(tail);string comment=tail.Substring(split);string spacing=split<tail.Length?tail.Substring(0,split).Substring(tail.Substring(0,split).TrimEnd().Length):"";if(comment.Length>0&&spacing.Length==0)spacing=" ";lines[i]=match.Groups[1].Value+value+spacing+comment;found=true;}
             }
-            if(!found) lines.Insert(end,key+"="+value);
+            if(!found){var addition=new List<string>();if(!string.IsNullOrWhiteSpace(description))addition.AddRange(description.Split('\n').Select(x=>"; "+x.TrimEnd('\r')));addition.Add(key+"="+value);lines.InsertRange(end,addition);}
         }
         internal void Save(bool backup) {
             if(backup) File.Copy(Path,Path+".bak",true);

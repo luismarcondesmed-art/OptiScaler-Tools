@@ -30,6 +30,7 @@ internal static partial class Program
         readonly ComboBox packages=new ComboBox(),proxies=new ComboBox(),spoof=new ComboBox(),iniTarget=new ComboBox(),logFiles=new ComboBox(),levels=new ComboBox();
         readonly CheckBox force=new CheckBox(),openAfter=new CheckBox(),useGui=new CheckBox(),patcher=new CheckBox();
         readonly DataGrid logs=new DataGrid();readonly ProgressBar progress=new ProgressBar();readonly Expander activityPanel=new Expander();
+        readonly DataGrid gameList=new DataGrid();readonly TextBlock gameCount=new TextBlock(),gameDetails=new TextBlock();Button updateAll;
         readonly Dictionary<string,ComboBox> editors=new Dictionary<string,ComboBox>();
         readonly Dictionary<string,string> rawValues=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
         readonly Dictionary<string,TextBox> rawEditors=new Dictionary<string,TextBox>(StringComparer.OrdinalIgnoreCase);
@@ -51,10 +52,10 @@ internal static partial class Program
             var footer=new Grid{Margin=new Thickness(34,0,34,18)};footer.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});footer.RowDefinitions.Add(new RowDefinition{Height=GridLength.Auto});
             progress.Height=3;progress.IsIndeterminate=true;progress.Foreground=Brush("#8092B8");progress.Background=Brush("#394352");progress.Visibility=Visibility.Collapsed;progress.Margin=new Thickness(0,0,0,10);footer.Children.Add(progress);
             status.Text="Ready";status.Foreground=Brush("#A5B1C4");status.FontSize=12;Grid.SetRow(status,1);footer.Children.Add(status);Grid.SetRow(footer,1);right.Children.Add(footer);
-            BuildUpdatePage();BuildInstallPage();BuildEditorPage();BuildLogsPage();SelectPage(0);
+            BuildUpdatePage();BuildInstallPage();BuildEditorPage();BuildLogsPage();BuildLibraryPage();SelectPage(0);
             LogReceived=Receive;
             SourceInitialized+=(s,e)=>ApplyBackdrop();
-            Loaded+=(s,e)=>{try{using(var gate=AcquireLock())Organize();RefreshState();LoadPackageIni(false);Append("Ready to update, install, or edit your configuration.");}catch(Exception ex){ShowError(ex);}};
+            Loaded+=(s,e)=>{try{using(var gate=AcquireLock()){Organize();DiscoverGames();}RefreshState();LoadPackageIni(false);Append("Ready to update, install, or edit your configuration.");}catch(Exception ex){ShowError(ex);}};
             Closing+=(s,e)=>{if(busy){e.Cancel=true;status.Text="Please wait for the current operation to finish.";}else if(!CanDiscard())e.Cancel=true;};
             Closed+=(s,e)=>LogReceived=null;
             RefreshState();
@@ -72,8 +73,8 @@ internal static partial class Program
             var brand=Column();brand.Margin=new Thickness(12,0,0,30);brand.Children.Add(Text("OptiScaler",23));brand.Children.Add(new TextBlock{Text="TOOLS",FontSize=10,Foreground=Brush("#8491A4"),Margin=new Thickness(1,5,0,0)});DockPanel.SetDock(brand,Dock.Top);sidebar.Children.Add(brand);
             var bottom=Column();bottom.Margin=new Thickness(13,18,0,0);bottom.Children.Add(Text("Portable workspace",11,"#8794A6"));materialInfo.Text="Soft tint";materialInfo.FontSize=11;materialInfo.Foreground=Brush("#8794A6");materialInfo.Margin=new Thickness(0,5,0,0);bottom.Children.Add(materialInfo);DockPanel.SetDock(bottom,Dock.Bottom);sidebar.Children.Add(bottom);
             var nav=Column();sidebar.Children.Add(nav);
-            string[] names={"1. Update OptiScaler","2. Install","Edit .ini","Logs / setup"};
-            string[] shapes={"M12,3 L12,15 M7,10 L12,15 17,10 M4,17 L4,21 20,21 20,17","M4,7 L12,3 20,7 20,17 12,21 4,17 Z M4,7 L12,11 20,7 M12,11 L12,21","M4,6 L20,6 M4,12 L20,12 M4,18 L20,18 M8,3 L8,9 M16,9 L16,15 M10,15 L10,21","M5,3 L16,3 20,7 20,21 5,21 Z M16,3 L16,7 20,7 M8,11 L17,11 M8,15 L17,15"};
+            string[] names={"1. Update OptiScaler","2. Install","Edit .ini","Logs / setup","Installed games"};
+            string[] shapes={"M12,3 L12,15 M7,10 L12,15 17,10 M4,17 L4,21 20,21 20,17","M4,7 L12,3 20,7 20,17 12,21 4,17 Z M4,7 L12,11 20,7 M12,11 L12,21","M4,6 L20,6 M4,12 L20,12 M4,18 L20,18 M8,3 L8,9 M16,9 L16,15 M10,15 L10,21","M5,3 L16,3 20,7 20,21 5,21 Z M16,3 L16,7 20,7 M8,11 L17,11 M8,15 L17,15","M7,7 L17,7 21,17 18,20 14,16 10,16 6,20 3,17 Z M6,11 L10,11 M8,9 L8,13 M16,11 L16,12 M18,13 L18,14"};
             for(int i=0;i<names.Length;i++){
                 int index=i;var content=Row();content.VerticalAlignment=VerticalAlignment.Center;
                 content.Children.Add(new WPath{Data=Geometry.Parse(shapes[i]),Stroke=Brush("#A2B3D2"),StrokeThickness=1.55,Width=21,Height=21,Stretch=Stretch.Uniform,Margin=new Thickness(0,0,12,0)});
@@ -111,7 +112,23 @@ internal static partial class Program
             patcher.Content="Add OptiPatcher when this game is supported";patcher.IsChecked=Settings.Get("game.optipatcher")=="auto";patcher.Margin=new Thickness(0,19,0,0);form.Children.Add(patcher);Watch(patcher);body.Children.Add(Card(form));
             var primary=Column();primary.Margin=new Thickness(0,8,0,0);install=MakeButton("Install",async()=>await Execute("game"),"Primary");install.Width=190;install.HorizontalAlignment=HorizontalAlignment.Left;primary.Children.Add(install);
             var sub=Row();sub.Margin=new Thickness(0,9,0,0);sub.Children.Add(MakeButton("Open folder",()=>{if(File.Exists(gamePath.Text))Shell(FilePath.GetDirectoryName(gamePath.Text));},"Quiet"));sub.Children.Add(MakeButton("Edit OptiScaler.ini",OpenGameIni,"Quiet"));primary.Children.Add(sub);body.Children.Add(primary);
-            var note=Text("Close the game first. Existing files are backed up before installation.",12,"#8491A3");note.Margin=new Thickness(0,25,0,0);body.Children.Add(note);AddBody(page,Scroll(body));
+            var note=Text("Close the game first. Existing files are backed up before installation.",12,"#8491A3");note.Margin=new Thickness(0,25,0,0);body.Children.Add(note);body.Children.Add(MakeButton("Manage installed games",()=>{SelectPage(4);RefreshGames();},"Quiet"));AddBody(page,Scroll(body));
+        }
+        void BuildLibraryPage(){
+            var page=Page("Installed games","Your managed installations, in one place.");var body=new DockPanel();
+            var top=Column();var buttons=Row();updateAll=MakeButton("Update all",async()=>await Execute("all"),"Primary");buttons.Children.Add(updateAll);buttons.Children.Add(MakeButton("Import installed",ImportInstalled,"Quiet"));buttons.Children.Add(MakeButton("Refresh",()=>{using(var gate=AcquireLock())DiscoverGames();RefreshGames();},"Quiet"));top.Children.Add(buttons);
+            var hint=Text("Downloads the latest nightly once, then updates each game. Keeps each game's INI values and load method. Close your games first.",12,"#A5B3C8");hint.Margin=new Thickness(0,16,0,14);top.Children.Add(hint);gameCount.Margin=new Thickness(0,0,0,12);gameCount.FontSize=12;top.Children.Add(gameCount);DockPanel.SetDock(top,Dock.Top);body.Children.Add(top);
+            var bottom=Column();bottom.Margin=new Thickness(0,16,0,0);gameDetails.FontSize=11;gameDetails.Foreground=Brush("#A5B3C8");gameDetails.Margin=new Thickness(0,0,0,12);bottom.Children.Add(gameDetails);var tools=Row();tools.Children.Add(MakeButton("Open folder",()=>{var selected=SelectedGame();if(Directory.Exists(selected.Folder))Shell(selected.Folder);},"Quiet"));tools.Children.Add(MakeButton("Edit INI",()=>{var selected=SelectedGame();if(CanDiscard()&&LoadIni(FilePath.Combine(selected.Folder,"OptiScaler.ini"))){refreshing=true;iniTarget.SelectedIndex=2;currentIniTarget=2;refreshing=false;SelectPage(2);}},"Quiet"));var remove=MakeButton("Remove from list",()=>{var selected=SelectedGame();ForgetGame(selected.Executable);RefreshGames();status.Text="Removed from the list. The game's files were kept.";},"Quiet");remove.ToolTip="Stops managing this game. Does not uninstall or delete game files. Use Import installed to add it again.";tools.Children.Add(remove);bottom.Children.Add(tools);DockPanel.SetDock(bottom,Dock.Bottom);body.Children.Add(bottom);
+            gameList.IsReadOnly=true;gameList.CanUserAddRows=false;gameList.CanUserDeleteRows=false;gameList.AutoGenerateColumns=false;gameList.SelectionMode=DataGridSelectionMode.Single;gameList.MinHeight=150;Watch(gameList);
+            foreach(var column in new[]{new[]{"Game","Name"},new[]{"OptiScaler","OptiScaler"},new[]{"Streamline","Streamline"},new[]{"Loader","Proxy"},new[]{"Status","Status"}})gameList.Columns.Add(new DataGridTextColumn{Header=column[0],Binding=new System.Windows.Data.Binding(column[1]),Width=new DataGridLength(column[1]=="Name"?1.5:column[1]=="Proxy"?.7:1,DataGridLengthUnitType.Star)});
+            gameList.SelectionChanged+=(s,e)=>{var game=gameList.SelectedItem as InstalledGame;gameDetails.Text=game==null?"Select a game to open its folder or edit its INI.":game.Executable+"\nLast update: "+(game.UpdatedUtc??"Not recorded")+"  |  Result: "+(game.ErrorCode??"OK");};body.Children.Add(gameList);AddBody(page,body);
+        }
+        InstalledGame SelectedGame(){var game=gameList.SelectedItem as InstalledGame;if(game==null)throw new AppError("E_GAME_SELECTION",54,"Select a registered game first.");return game;}
+        void ImportInstalled(){var dialog=new Microsoft.Win32.OpenFileDialog{Filter="Game executable (*.exe)|*.exe",CheckFileExists=true,Title="Import a game previously installed with OptiScaler Tools"};if(dialog.ShowDialog(this)!=true)return;ImportGame(dialog.FileName);RefreshGames();status.Text="Installed game imported.";}
+        void RefreshGames(){
+            if(updateAll==null)return;string selected=(gameList.SelectedItem as InstalledGame)==null?null:((InstalledGame)gameList.SelectedItem).Executable;
+            try{var games=ReadLibrary().games.OrderBy(x=>x.Name,StringComparer.OrdinalIgnoreCase).ToList();gameList.ItemsSource=games;gameCount.Text=games.Count==0?"No games registered yet. New installations are added automatically; use Import installed for earlier installations.":games.Count+" managed installation"+(games.Count==1?"":"s");gameList.SelectedItem=games.FirstOrDefault(x=>x.Executable==selected);updateAll.IsEnabled=!busy&&games.Count>0;}
+            catch(Exception e){gameCount.Text=ErrorCode(e)+": "+DescribeException(e);updateAll.IsEnabled=false;}
         }
         ComboBox Field(ProfileField field){
             var combo=new ComboBox{Margin=new Thickness(0,7,0,0),ToolTip="["+field.Section+"] "+field.Key};System.Windows.Automation.AutomationProperties.SetName(combo,field.Label);foreach(var opt in field.Options)combo.Items.Add(opt);SetChoice(combo,Settings.Get(field.ConfigKey));editors.Add(field.ConfigKey,combo);Watch(combo);
@@ -258,7 +275,7 @@ internal static partial class Program
         void RefreshState(){
             string latest=LatestBuild();packageVersion.Text=latest==null?"No package prepared":FilePath.GetFileName(latest);streamVersion.Text="Streamline  "+ReadStreamlineTag();openLatest.IsEnabled=!busy&&latest!=null;install.IsEnabled=!busy&&latest!=null&&File.Exists(gamePath.Text);
             string selected=packages.SelectedItem as string;packages.Items.Clear();if(Directory.Exists(BuildsRoot))foreach(string dir in Directory.GetDirectories(BuildsRoot).Where(x=>!FilePath.GetFileName(x).StartsWith(".")&&File.Exists(FilePath.Combine(x,"instalacao.json"))).OrderByDescending(Directory.GetLastWriteTimeUtc))packages.Items.Add(FilePath.GetFileName(dir));if(selected!=null&&packages.Items.Contains(selected))packages.SelectedItem=selected;else if(packages.Items.Count>0)packages.SelectedIndex=0;
-            RefreshLogs();UpdateDirty();
+            RefreshLogs();RefreshGames();UpdateDirty();
         }
         void RefreshLogs(){string previous=logFiles.SelectedItem as string;logFiles.Items.Clear();if(Directory.Exists(LogsRoot))foreach(string file in Directory.GetFiles(LogsRoot,"*.jsonl").Where(x=>FilePath.GetFileName(x)!="tests.jsonl").OrderByDescending(File.GetLastWriteTimeUtc))logFiles.Items.Add(FilePath.GetFileName(file));if(previous!=null&&logFiles.Items.Contains(previous))logFiles.SelectedItem=previous;else if(logFiles.Items.Count>0)logFiles.SelectedIndex=0;logFiles.IsEnabled=logFiles.Items.Count>0;logFiles.ToolTip=logFiles.Items.Count==0?"No saved sessions yet":"Choose a previous operation";}
         void LoadLog(){if(logFiles.SelectedItem==null)return;logRows.Clear();foreach(string line in File.ReadLines(FilePath.Combine(LogsRoot,(string)logFiles.SelectedItem))){try{var item=Json.Deserialize<Dictionary<string,object>>(line);logRows.Add(new UiLogRow{Time=Convert.ToString(item["timestamp"]),Level=Convert.ToString(item["level"]),Code=Convert.ToString(item["code"]),Message=Convert.ToString(item["message"])});}catch{}}RenderLogs();}
@@ -271,10 +288,10 @@ internal static partial class Program
         void OpenReady(){string latest=LatestBuild();if(latest!=null)Shell(latest);}
         async Task Execute(string action){
             if(busy)return;string game=gamePath.Text,package=SelectedPackage(),proxy=Selected(proxies),patch=patcher.IsChecked==true?"auto":"off";bool shouldOpen=openAfter.IsChecked==true;
-            if(action=="game"&&dirty.Count>0){if(!CanDiscard())return;LoadIni(editedIni);}busy=true;foreach(var control in actions)control.IsEnabled=false;progress.Visibility=Visibility.Visible;status.Foreground=Brush("#A5B1C4");status.Text="Starting.";Force=force.IsChecked==true;NoOpen=true;NoPause=true;
+            if((action=="game"||action=="all")&&dirty.Count>0){if(!CanDiscard())return;LoadIni(editedIni);}busy=true;foreach(var control in actions)control.IsEnabled=false;progress.Visibility=Visibility.Visible;status.Foreground=Brush("#A5B1C4");status.Text="Starting.";Force=force.IsChecked==true;NoOpen=true;NoPause=true;
             try{
                 logRows.Clear();RenderLogs();BeginSession(action);
-                if(action=="ini")SaveEditor();else await Task.Run(()=>{if(action=="game"){RunSetupProcess(game,package,proxy,patch);var installed=ReadGameManifest(FilePath.GetDirectoryName(game));SessionOpti=installed.optiscaler;SessionStream=installed.streamline;}else using(var gate=AcquireLock()){Organize();if(action=="prepare")Install().GetAwaiter().GetResult();else if(action=="streamline")Streamline().GetAwaiter().GetResult();else ClearStreamline();}});
+                if(action=="ini")SaveEditor();else await Task.Run(()=>{if(action=="all"){UpdateAllGames().GetAwaiter().GetResult();}else if(action=="game"){RunSetupProcess(game,package,proxy,patch);var installed=ReadGameManifest(FilePath.GetDirectoryName(game));SessionOpti=installed.optiscaler;SessionStream=installed.streamline;}else using(var gate=AcquireLock()){Organize();if(action=="prepare")Install().GetAwaiter().GetResult();else if(action=="streamline")Streamline().GetAwaiter().GetResult();else ClearStreamline();}});
                 EndSession(true,null);status.Text=SessionWarning?"Completed with warnings. See Logs / setup.":action=="ini"?"Changes saved. A backup of the previous INI was created.":"Done. Everything is ready.";status.Foreground=Brush(SessionWarning?"#D0B58B":"#9ABDB1");
                 if(action=="prepare"&&dirty.Count==0){RefreshState();string latest=LatestBuild();if(latest!=null&&packages.Items.Contains(FilePath.GetFileName(latest)))packages.SelectedItem=FilePath.GetFileName(latest);LoadPackageIni(false);}if(shouldOpen&&action=="prepare")OpenReady();else if(shouldOpen&&action=="game")Shell(FilePath.GetDirectoryName(game));
             }catch(Exception e){try{EndSession(false,e);}catch{}ShowError(e);}finally{busy=false;progress.Visibility=Visibility.Collapsed;foreach(var control in actions)control.IsEnabled=true;RefreshState();if(SessionId!=null&&logFiles.Items.Contains(SessionId+".jsonl"))logFiles.SelectedItem=SessionId+".jsonl";}
@@ -288,6 +305,14 @@ internal static partial class Program
             }catch{materialInfo.Text="Soft tint";}
         }
         internal Task TestUpdate(){openAfter.IsChecked=false;return Execute("prepare");}
+        internal async Task TestGameLibrary(){
+            string folder=FilePath.Combine(Root,"games","Library fixture");Directory.CreateDirectory(folder);string executable=FilePath.Combine(folder,"LibraryGame.exe");File.WriteAllBytes(executable,PeFixture());
+            await InstallGame(executable,LatestBuild(),"dxgi","off");RefreshGames();SelectPage(4);Check(gameList.Items.Count==1&&updateAll.IsEnabled,"The installed-games page lists successful installations and enables Update all");
+            string path=FilePath.Combine(folder,"OptiScaler.ini");var ini=new IniDocument(path);ini.Set("FrameGen","Enabled","false");ini.Save(false);
+            await Execute("all");Check(!busy&&updateAll.IsEnabled&&gameList.Items.Count==1&&((InstalledGame)gameList.Items[0]).LastResult=="Updated"&&new IniDocument(path).Get("FrameGen","Enabled")=="false","Update all works through the interface, refreshes per-game results and keeps game settings");
+            gameList.SelectedIndex=0;Check(gameDetails.Text.Contains(executable)&&gameDetails.Text.Contains("OK"),"Selecting a managed game shows its executable, update timestamp and result code");
+            Capture(FilePath.Combine(AppRoot,"src","interface-installed-games.png"));
+        }
         internal bool ReadyAfterTest{get{return !busy&&update.IsEnabled&&openLatest.IsEnabled&&status.Text.StartsWith("Done.");}}
         internal void Capture(string file){UpdateLayout();var root=(FrameworkElement)Content;var image=new RenderTargetBitmap((int)root.ActualWidth,(int)root.ActualHeight,96,96,PixelFormats.Pbgra32);image.Render(root);var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(image));using(var stream=File.Create(file))encoder.Save(stream);}
         internal void CapturePages(string folder){for(int i=0;i<pages.Count;i++){SelectPage(i);UpdateLayout();PumpDispatcher();Capture(FilePath.Combine(folder,i==0?"interface-preview.png":"interface-aba-"+(i+1)+".png"));}SelectPage(2);quickSettings.Visibility=Visibility.Collapsed;allSettings.Visibility=Visibility.Visible;RenderIniRows();UpdateLayout();PumpDispatcher();Capture(FilePath.Combine(folder,"interface-all-settings.png"));quickSettings.Visibility=Visibility.Visible;allSettings.Visibility=Visibility.Collapsed;SelectPage(0);}

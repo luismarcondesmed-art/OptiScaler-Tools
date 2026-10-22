@@ -123,6 +123,25 @@ Source: https://github.com/optiscaler/OptiPatcher
 
 The helper does not start the game. Installations from a prepared package do not re-check the newest online release; use Update first if current components are required. **Edit OptiScaler.ini** on the Install page opens the game's actual INI directly.
 
+## Installed games and Update all
+
+**Installed games** in the sidebar maintains a persistent list of installations managed by this app. Successful installs are added automatically, with the executable path, OptiScaler and Streamline versions, loader, OptiPatcher preference, last update time, and per-game result code. Installations from earlier versions are recovered from successful session logs and the configured game when their installation manifests are still available. **Import installed** adds another existing installation by selecting its game executable and verifying its OptiScaler Tools manifest.
+
+**Update all** checks and prepares the latest nightly once, then updates every registered game in sequence. Each game keeps its installed loader and OptiPatcher preference. Existing INI values, custom sections, and comments are retained; missing settings from the new package are added. Supported OptiPatcher installation may enable `LoadAsiPlugins` as required. Each game receives its own file backup and transaction. Close the games first.
+
+A failed or missing game does not stop later games from updating. Per-game results remain visible, and logs record `BATCH_START`, `BATCH_GAME`, `BATCH_GAME_FAILED`, and `BATCH_COMPLETE`. Partial completion returns `E_BATCH_PARTIAL` / exit code 55. If preparing the new package fails, no game is updated. Games that have moved or lost their manifest remain listed as missing; import the new executable path and remove the obsolete entry.
+
+Select a game to **Open folder**, **Edit INI**, or **Remove from list**. Removing a game does not delete or uninstall its files; it also prevents history discovery from automatically re-adding it. Explicit import adds it again. The list and its backup are saved locally at `source/.cache/installed-games.json` and `.json.bak`; keep that file when moving the app to another folder. It is excluded from GitHub and portable release packages.
+
+Keep **both version 1.1 EXEs** together. Batch updates reject an older setup helper before launching it, because older helpers cannot preserve each game's INI.
+
+CLI equivalents:
+
+```powershell
+.\OptiScaler-Tools.exe --games --no-pause | Out-Host
+.\OptiScaler-Tools.exe --update-all --no-open --no-pause | Out-Host
+```
+
 ## Logs
 
 New application, installer, configuration, and test messages are in English. Common localized Windows file/network errors are presented with English descriptions, HRESULT/native codes, exception types, and stack information.
@@ -141,6 +160,8 @@ The log viewer can filter warnings/errors and search event text or codes. Histor
 | 50-51 | Game path or proxy conflict |
 | 52 | Permission denied |
 | 53 | Copy/source integrity |
+| 54 | Installed-games list, import or selection |
+| 55 | Batch update completed with failed or missing games |
 | 60-61 | Setup or optional patcher binary |
 | 1 | Other I/O or unexpected error |
 

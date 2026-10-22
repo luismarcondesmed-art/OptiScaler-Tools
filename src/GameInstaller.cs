@@ -17,6 +17,7 @@ internal static partial class Program
     internal sealed class GameManifest {
         public string executable {get;set;} public string optiscaler {get;set;} public string streamline {get;set;}
         public string proxy {get;set;} public string patcher {get;set;} public string backup {get;set;}
+        public string patcherMode {get;set;} public string updatedUtc {get;set;}
         public Dictionary<string,string> files {get;set;}
     }
     internal static int SetupMain(string[] args) {
@@ -27,7 +28,7 @@ internal static partial class Program
             Settings=AppSettings.Load(Path.Combine(AppRoot,"OptiScaler-Tools.toml"));
             using(var gate=AcquireLock()) {
                 Organize();BeginSession("setup-game");
-                InstallGame(Argument(args,"--game",Settings.Get("game.executable")),Argument(args,"--package",LatestBuild()),Argument(args,"--proxy",Settings.Get("game.proxy")),Argument(args,"--patcher",Settings.Get("game.optipatcher"))).GetAwaiter().GetResult();
+                InstallGame(Argument(args,"--game",Settings.Get("game.executable")),Argument(args,"--package",LatestBuild()),Argument(args,"--proxy",Settings.Get("game.proxy")),Argument(args,"--patcher",Settings.Get("game.optipatcher")),args.Contains("--preserve-ini")).GetAwaiter().GetResult();
                 EndSession(true,null);
             }return 0;
         } catch(Exception e) {try{EndSession(false,e);}catch{}return ExitCode(e);}
@@ -159,7 +160,7 @@ internal static partial class Program
             if(errors.Count>0) File.WriteAllLines(Path.Combine(backup,"ROLLBACK_ERRORS.txt"),errors);
         }
     }
-    static async Task InstallGame(string executable,string package,string requested,string patcherMode) {
+    static async Task InstallGame(string executable,string package,string requested,string patcherMode,bool preserveIni=false) {
         if(string.IsNullOrWhiteSpace(executable) || !File.Exists(executable) || !executable.EndsWith(".exe",StringComparison.OrdinalIgnoreCase) || !IsAmd64(executable))throw new AppError("E_GAME_EXE",50,"Choose the actual Windows x64 game executable. Unreal games usually keep it in Binaries/Win64.");
         if(string.IsNullOrEmpty(package) || !Directory.Exists(package) || !File.Exists(Path.Combine(package,"OptiScaler.dll")) || !File.Exists(Path.Combine(package,"OptiScaler.ini")))throw new AppError("E_PACKAGE",30,"Prepare a complete package before installing it into a game.");
         executable=Path.GetFullPath(executable);package=Path.GetFullPath(package);string game=Path.GetDirectoryName(executable);
@@ -180,8 +181,9 @@ internal static partial class Program
             File.Move(Path.Combine(staging,"OptiScaler.dll"),Path.Combine(staging,name));
             StageLocalSources(staging);
             if(proxy=="asi")File.Copy(Path.Combine(SourceRoot,"asi_loader","asiloader.dll"),Path.Combine(staging,"version.dll"));
+            if(preserveIni)PreserveGameSettings(game,staging);
             string patcher=await AddPatcher(executable,staging,patcherMode);
-            var manifest=new GameManifest {executable=executable,optiscaler=SessionOpti,streamline=SessionStream,proxy=proxy,patcher=patcher,backup=backup,files=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)};
+            var manifest=new GameManifest {executable=executable,optiscaler=SessionOpti,streamline=SessionStream,proxy=proxy,patcher=patcher,patcherMode=patcherMode,updatedUtc=DateTime.UtcNow.ToString("o"),backup=backup,files=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)};
             foreach(string file in SafeFiles(staging))manifest.files[file.Substring(staging.Length+1)]=Hash(file);
             // Prevent overwriting executable files or unrelated existing proxy names before any write.
             foreach(string relative in manifest.files.Keys) {
@@ -198,6 +200,7 @@ internal static partial class Program
                 transaction.Put(manifestFile,"OptiScaler-Tools.install.json");transaction.Commit();
             }
             WriteEvent("INFO","GAME_SUCCESS","Installation completed and files verified. Proxy: "+name+"; OptiPatcher: "+patcher,new{game=executable,optiscaler=SessionOpti,streamline=SessionStream,proxy=proxy,patcher=patcher,backup=backup});
+            try{RegisterGame(manifest);}catch(Exception e){WriteEvent("WARN","W_GAME_LIBRARY","Installation succeeded, but the installed-games list could not be saved. Use Import installed to retry.",new{code=ErrorCode(e),error=DescribeException(e)});}
             Log("The game was not launched; runtime compatibility has not been verified.");
         } finally {if(Directory.Exists(work))Directory.Delete(work,true);}
     }
@@ -206,9 +209,10 @@ internal static partial class Program
         foreach(char c in value) {if(c=='\\'){slash++;continue;}if(c=='\"'){text.Append('\\',slash*2+1);text.Append(c);}else{text.Append('\\',slash);text.Append(c);}slash=0;}
         text.Append('\\',slash*2);text.Append('"');return text.ToString();
     }
-    static void RunSetupProcess(string executable,string package,string proxy,string patcher) {
+    static void RunSetupProcess(string executable,string package,string proxy,string patcher,bool preserveIni=false) {
         string setup=Path.Combine(AppRoot,"setup_optiscaler.exe");if(!File.Exists(setup))throw new AppError("E_SETUP_MISSING",60,"setup_optiscaler.exe was not found beside the application.");
-        var args=new[]{"--root",Root,"--game",executable,"--package",package,"--proxy",proxy,"--patcher",patcher};
+        if(preserveIni)VerifySetupVersion(setup);
+        var args=new List<string>{"--root",Root,"--game",executable,"--package",package,"--proxy",proxy,"--patcher",patcher};if(preserveIni)args.Add("--preserve-ini");
         var start=new ProcessStartInfo(setup,string.Join(" ",args.Select(QuoteArgument))){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=AppRoot};
         WriteEvent("INFO","SETUP_START","Running setup_optiscaler.exe automatically.",new{executable=executable,proxy=proxy});
         using(var process=Process.Start(start)) {
@@ -217,5 +221,8 @@ internal static partial class Program
             WriteEvent(process.ExitCode==0?"INFO":"ERROR","SETUP_EXIT","setup_optiscaler.exe exited with code "+process.ExitCode,new{exitCode=process.ExitCode});
             if(process.ExitCode!=0)throw new AppError("E_SETUP",process.ExitCode,"Setup returned code "+process.ExitCode+". Check the setup log for the cause and rollback result.");
         }
+    }
+    static void VerifySetupVersion(string setup){
+        Version version;if(!Version.TryParse(FileVersionInfo.GetVersionInfo(setup).FileVersion,out version)||version<new Version(1,1,0,0))throw new AppError("E_SETUP_VERSION",60,"Update all requires setup_optiscaler.exe version 1.1 or newer to preserve game INI settings. Replace both EXEs together.");
     }
 }

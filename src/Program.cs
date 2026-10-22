@@ -56,17 +56,21 @@ internal static partial class Program
                 if(++i==args.Length) throw new Exception("Missing path after --dest.");
                 Root=Path.GetFullPath(args[i]);
             }
-            if(args.Contains("--help")) { Console.WriteLine("OptiScaler-Tools [--gui|--install|--streamline|--clear-streamline|--menu|--self-test|--organize] [--game GAME.exe] [--proxy auto|dxgi|asi|winmm] [--dest PATH] [--force] [--no-open] [--no-pause]\nWithout arguments, follows app.gui in OptiScaler-Tools.toml. --install prepares the latest nightly in CLI mode.\n--game installs the local package beside the selected executable. Logs: output/.logs."); return 0; }
+            if(args.Contains("--help")) { Console.WriteLine("OptiScaler-Tools [--gui|--install|--streamline|--clear-streamline|--update-all|--games|--menu|--self-test|--organize] [--game GAME.exe] [--proxy auto|dxgi|asi|winmm] [--dest PATH] [--force] [--no-open] [--no-pause]\nWithout arguments, follows app.gui in OptiScaler-Tools.toml. --install prepares the latest nightly in CLI mode.\n--game installs the local package beside the selected executable. --games lists registered installations. --update-all prepares the latest nightly and updates every registered game, preserving game INI settings. Logs: output/.logs."); return 0; }
             if(args.Contains("--self-test")) { SelfTest(); return 0; }
             if(args.Contains("--ui-test")) { UiTest(); return 0; }
             if(gui) { RunWindow(); return 0; }
             Directory.CreateDirectory(Root);
+            if(args.Contains("--update-all")){
+                BeginSession("update-all");UpdateAllGames().GetAwaiter().GetResult();EndSession(true,null);Pause();return 0;
+            }
             // A file lock is scoped to the destination, including across processes.
             using(var gate = AcquireLock()) {
                 Organize();
                 BeginSession("cli");
                 Log("=== OptiScaler Tools ===");
                 if(args.Contains("--organize")) Log("Workspace organized.");
+                else if(args.Contains("--games")){DiscoverGames();foreach(var game in ReadLibrary().games)Console.WriteLine(game.Name+" | "+game.OptiScaler+" | "+game.Streamline+" | "+game.Status+" | "+game.Executable);}
                 else if(args.Contains("--game")) {
                     string exe=Argument(args,"--game",Settings.Get("game.executable"));
                     InstallGame(exe,LatestBuild(),Argument(args,"--proxy",Settings.Get("game.proxy")),Settings.Get("game.optipatcher")).GetAwaiter().GetResult();
@@ -353,6 +357,7 @@ internal static partial class Program
             PipelineTest(Path.Combine(dir,"pipeline"));
             MigrationTest(Path.Combine(dir,"migration"));
             FeatureTests(Path.Combine(dir,"features"));
+            LibraryTests(Path.Combine(dir,"library"));
             Console.WriteLine("All tests passed.");
         } finally { Directory.Delete(dir,true); }
     }

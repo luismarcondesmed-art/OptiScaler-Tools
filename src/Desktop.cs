@@ -104,7 +104,7 @@ internal static partial class Program
         using(var scope=new UiSnapshotScope()) {
             var window=new MainWindow();window.WindowStartupLocation=System.Windows.WindowStartupLocation.Manual;window.Left=-20000;window.Top=-20000;
             window.Show();PumpDispatcher();System.IO.Directory.CreateDirectory(System.IO.Path.Combine(Root,"src"));window.CapturePages(System.IO.Path.Combine(Root,"src"));
-            Check(window.IsLoaded,"All four WPF pages render without downloading files");window.Close();
+            Check(window.IsLoaded,"All five WPF pages render without downloading files");window.Close();
             HttpClientStateTest();
         }
         app.Shutdown();
@@ -118,7 +118,7 @@ internal static partial class Program
             var window=new MainWindow();window.WindowStartupLocation=System.Windows.WindowStartupLocation.Manual;window.Left=-20000;window.Top=-20000;
             var frame=new System.Windows.Threading.DispatcherFrame();
             window.ContentRendered+=async(s,e)=> {
-                try {await window.TestUpdate();Check(File.Exists(Path.Combine(LatestBuild(),"optiscaler","streamline","sl.test.dll"))&&window.ReadyAfterTest,"Update completes through the WPF interface without blocking the window");window.TestIniEditor();}
+                try {await window.TestUpdate();Check(File.Exists(Path.Combine(LatestBuild(),"optiscaler","streamline","sl.test.dll"))&&window.ReadyAfterTest,"Update completes through the WPF interface without blocking the window");window.TestIniEditor();await window.TestGameLibrary();}
                 catch(Exception ex){failure=ex;}
                 finally{window.Close();frame.Continue=false;}
             };
