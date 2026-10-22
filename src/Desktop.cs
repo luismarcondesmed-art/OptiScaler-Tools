@@ -115,6 +115,7 @@ internal static partial class Program
         string testDir=Path.Combine(Root,".ui-test-"+Guid.NewGuid().ToString("N"));Exception failure=null;
         try {
             Root=testDir;TestMode=true;Directory.CreateDirectory(Root);Http=new System.Net.Http.HttpClient(new FixtureHandler());
+            Directory.CreateDirectory(Path.Combine(SourceRoot,"dlssenabler"));File.WriteAllText(Path.Combine(SourceRoot,"dlssenabler","version.dll"),"fixture-enabler");
             var window=new MainWindow();window.WindowStartupLocation=System.Windows.WindowStartupLocation.Manual;window.Left=-20000;window.Top=-20000;
             var frame=new System.Windows.Threading.DispatcherFrame();
             window.ContentRendered+=async(s,e)=> {

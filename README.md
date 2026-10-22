@@ -115,9 +115,9 @@ On the Install page, select the actual Windows x64 game executable and close the
 
 This priority checks file conflicts; it does not launch the game to test compatibility. Files belonging to another mod are kept. If no method is available, installation stops with `E_PROXY_CONFLICT`.
 
-The application starts the bundled **setup_optiscaler.exe** helper without interactive prompts. This is a helper built by this project, implementing the equivalent file operations of the current nightly's `setup_windows.bat`; it is not an official upstream EXE, and the BAT is not blindly fed answers.
+The same **OptiScaler-Tools.exe** runs the built-in installer in a separate background worker process, without prompts or a second executable. It implements the equivalent file operations of the current nightly's `setup_windows.bat`; the BAT is not blindly fed answers.
 
-The helper stages the package, applies the current local files in `source`, verifies each copied file, records versions, and backs up replaced files. On failure it attempts to restore originals and remove new files. Backups and transaction records are retained. The game manifest, `OptiScaler-Tools.install.json`, includes versions, proxy, OptiPatcher status, hashes, and the backup location. When changing proxies, only files still matching the previous managed installation are removed.
+The built-in installer stages the package, applies the current local files in `source`, verifies each copied file, records versions, and backs up replaced files. On failure it attempts to restore originals and remove new files. Backups and transaction records are retained. The game manifest, `OptiScaler-Tools.install.json`, includes versions, proxy, OptiPatcher status, hashes, and the backup location. When changing proxies, only files still matching the previous managed installation are removed.
 
 OptiPatcher uses a positive executable-name match from the official `dllmain.cpp` checks before downloading the rolling ASI. When installed, `[Plugins] LoadAsiPlugins=true` is set. Unsupported games or unavailable downloads are reported and skipped. Name matching does not validate game-specific launch requirements or prove runtime compatibility.
 
@@ -135,7 +135,7 @@ A failed or missing game does not stop later games from updating. Per-game resul
 
 Select a game to **Open folder**, **Edit INI**, or **Remove from list**. Removing a game does not delete or uninstall its files; it also prevents history discovery from automatically re-adding it. Explicit import adds it again. The list and its backup are saved locally at `source/.cache/installed-games.json` and `.json.bak`; keep that file when moving the app to another folder. It is excluded from GitHub and portable release packages.
 
-Keep **both current EXEs** together. Batch updates reject an older setup helper before launching it, because older helpers cannot preserve each game's INI.
+Only **OptiScaler-Tools.exe** is required as an executable. The installation worker always uses this same binary, so updater and installer versions stay matched.
 
 CLI equivalents:
 
@@ -169,12 +169,22 @@ The log viewer can filter warnings/errors and search event text or codes. Histor
 
 `ROLLBACK_OK` and `E_ROLLBACK` identify rollback results. `W_PATCHER_UNAVAILABLE` identifies an optional patcher problem. A successful copy is not reported as a successful game launch.
 
+## Disk usage
+
+- Files whose SHA-256 already matches the installation are skipped: no overwrite and no redundant backup.
+- Original files of 64 KiB or more are stored once, gzip-compressed and addressed by SHA-256, under `output/.backups/.objects/`. Multiple transactions and games reuse the same verified object. Each transaction's `transaction.json` maps original paths to their object hashes in `compressedOriginals`. Keep the object folder together with the transaction folders. Automatic rollback decompresses to a temporary file, checks its SHA-256, then restores it. Smaller originals, including INIs and JSON manifests, remain directly accessible in each backup folder. For manual recovery, a standard gzip tool can extract an object; its destination filename is recorded by the transaction map.
+- The Streamline SDK ZIP is removed only after DLL extraction and verification. Valid extracted DLLs are reused on later updates. Repairing damaged DLLs requires downloading the SDK again; this trades archive retention for lower disk use.
+- Only the current OptiScaler download archive is retained. Prepared nightlies, game files, the game library, and existing rollback backups are preserved.
+- Complete release ZIPs are not generated automatically during builds. The development script and icon source stay under `src/`.
+
+Prepared packages and actual game directories retain independent copies of the DLLs they need; mutable game files are not hard-linked to a shared cache.
+
 ## Build and verification
 
-For a source checkout, first copy `OptiScaler-Tools.example.toml` to `OptiScaler-Tools.toml` and place your local DLSS Enabler DLL at `source/dlssenabler/version.dll` before running `Build.ps1`. Runtime libraries, downloads, logs, and personal configuration are excluded from version control.
+For a source checkout, copy `OptiScaler-Tools.example.toml` to `OptiScaler-Tools.toml` and run `src/Build.ps1`. Compilation and synthetic tests do not require third-party DLLs. To prepare real game packages, place DLSS Enabler at `source/dlssenabler/version.dll`, AMD files in `source/amd_files/`, and the ASI Loader in `source/asi_loader/` when ASI installation is needed. Runtime libraries, downloads, logs, and personal configuration are excluded from version control.
 
-Keep both EXEs, the TOML, and `source/` together. The main EXE also embeds a DLSS Enabler fallback for package preparation. The ASI Loader remains external and is needed only for ASI installation.
+Keep **OptiScaler-Tools.exe**, the TOML, and `source/` together. Runtime DLLs are stored externally once in source instead of also being embedded inside the application. PowerShell is used only for building from source; it is not used to launch or install the app.
 
-`Build.ps1` uses the Windows .NET Framework 4.8 compiler, WPF, and the embedded `src/Theme.xaml`, builds both executables, and runs the engine and installer tests. No Python, browser, SDK, or third-party UI package is required. The executables are unsigned.
+`src/Build.ps1` uses the Windows .NET Framework 4.8 compiler, WPF, the embedded theme, and `src/assets/app.ico`, builds one executable, and runs the engine and installer tests. The icon has seven resolutions from 16 to 256 pixels. No Python, browser, SDK, or third-party UI package is required. The executable is unsigned.
 
 `--ui-test` renders every WPF page and verifies the update flow, section-aware editing, full-file editing, rendered text visibility, comment tooltips, search persistence, independent package/application selection, per-target original-default resets, synchronization between views, and inline validation. The engine tests cover architecture selection, cache integrity, TOML, extraction, migration, proxy order, ASI Loader, preserving other mods, rollback, and helper execution against synthetic game folders. API and patcher tests use simulated HTTP responses. These checks do not prove download availability or compatibility inside a running real game.

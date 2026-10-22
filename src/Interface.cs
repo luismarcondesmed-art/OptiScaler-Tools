@@ -42,6 +42,7 @@ internal static partial class Program
         Button update,openLatest,install,saveIni;bool busy,loadingIni,refreshing;string editedIni;int pageIndex,currentIniTarget;
         internal MainWindow() {
             Title="OptiScaler Tools";Width=1160;Height=820;MinWidth=1030;MinHeight=740;
+            using(var appIcon=System.Drawing.Icon.ExtractAssociatedIcon(typeof(Program).Assembly.Location))if(appIcon!=null)Icon=System.Windows.Interop.Imaging.CreateBitmapSourceFromHIcon(appIcon.Handle,Int32Rect.Empty,BitmapSizeOptions.FromEmptyOptions());
             WindowStartupLocation=WindowStartupLocation.CenterScreen;Background=Brush("#212121");
             FontFamily=new FontFamily("Segoe UI Variable Text, Segoe UI");FontSize=13;Foreground=Brush("#ECECEC");
             using(var theme=typeof(Program).Assembly.GetManifestResourceStream("Theme.xaml"))Resources.MergedDictionaries.Add((ResourceDictionary)XamlReader.Load(theme));

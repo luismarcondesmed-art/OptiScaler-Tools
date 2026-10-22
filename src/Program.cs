@@ -42,6 +42,7 @@ internal static partial class Program
     [STAThread]
     static int Main(string[] args) {
         UseEnglishCulture();
+        if(args.Contains("--setup-worker")){AttachCli();return SetupMain(args);}
         NoPause = args.Contains("--no-pause") || Console.IsInputRedirected;
         NoOpen = args.Contains("--no-open"); Force = args.Contains("--force");
         TestMode = args.Contains("--self-test");
@@ -229,7 +230,7 @@ internal static partial class Program
     static async Task<string> Streamline() {
         var r=await ReleaseFor("NVIDIA-RTX/Streamline"); var a=Select(r,true);
         string cache=StreamlineRoot, stamp=Path.Combine(cache,".manifest.json");
-        if(!Force && VerifyManifest(cache,stamp,a.id)) { SessionStream=r.tag_name;Log("Streamline is up to date and verified: "+r.tag_name); return cache; }
+        if(!Force && VerifyManifest(cache,stamp,a.id)) {PruneDownloads(Path.Combine(DownloadsRoot,"streamline"));SessionStream=r.tag_name;Log("Streamline is up to date and verified: "+r.tag_name); return cache; }
         string zip=await Download(a,Path.Combine(DownloadsRoot,"streamline"));
         string work=Path.Combine(DataRoot,".streamline-"+Guid.NewGuid().ToString("N"));
         try {
@@ -243,7 +244,7 @@ internal static partial class Program
             }
             if(!Dlls(ready)) throw new Exception("The Streamline package contains no bin/x64 DLLs.");
             WriteManifest(ready,Path.Combine(ready,".manifest.json"),a.id,r.tag_name);
-            Publish(ready,cache);SessionStream=r.tag_name;Log("Streamline updated: "+r.tag_name); return cache;
+            Publish(ready,cache);PruneDownloads(Path.Combine(DownloadsRoot,"streamline"));SessionStream=r.tag_name;Log("Streamline updated: "+r.tag_name); return cache;
         } finally { if(Directory.Exists(work)) Directory.Delete(work,true); }
     }
     internal sealed class Manifest { public long asset {get;set;} public string tag {get;set;} public Dictionary<string,string> files {get;set;} }
@@ -287,9 +288,7 @@ internal static partial class Program
             string build=Path.GetDirectoryName(ini), plugins=Path.Combine(build,"optiscaler"); Directory.CreateDirectory(plugins);
             string dll=Path.Combine(SourceRoot,"dlssenabler","version.dll"), dst=Path.Combine(plugins,"dlss-enabler-headless.dll");
             if(File.Exists(dll)) File.Copy(dll,dst,true);
-            else using(var resource=typeof(Program).Assembly.GetManifestResourceStream("version.dll")) {
-                if(resource==null) throw new Exception("version.dll was not found."); using(var output=File.Create(dst)) resource.CopyTo(output);
-            }
+            else throw new AppError("E_SOURCE_ENABLER",53,"DLSS Enabler was not found at source/dlssenabler/version.dll. Keep the source folder beside the application.");
             if(new FileInfo(dst).Length==0) throw new Exception("version.dll is empty.");
             string streamline;
             try { streamline=await Streamline(); }
@@ -315,6 +314,7 @@ internal static partial class Program
             File.WriteAllText(Path.Combine(work,"instalacao.json"),Json.Serialize(new { optiscaler=r.tag_name,asset=a.id,streamline=streamVersion,streamlineFallback=fallback,versionSha256=Hash(dst),completed=DateTime.UtcNow.ToString("o") }));
             WriteEvent(fallback?"WARN":"INFO","PACKAGE_READY","OptiScaler "+r.tag_name+"; Streamline "+streamVersion,new {optiscaler=r.tag_name,streamline=streamVersion,fallback=fallback});
             Publish(work,destination);
+            PruneDownloads(Path.Combine(DownloadsRoot,"optiscaler"),a.name);
             File.WriteAllText(Path.Combine(DataRoot,"ultima_versao_baixada.txt"),r.tag_name+Environment.NewLine);
             Log(fallback?"PACKAGE READY WITH WARNING: Using local Streamline; an update is pending.":"PACKAGE READY: OptiScaler, INI, Streamline, and DLSS Enabler verified.");
             Log(destination); Open(destination);
@@ -340,7 +340,7 @@ internal static partial class Program
             var asset=new Asset {size=new FileInfo(dll).Length,digest="sha256:"+Hash(dll)}; Check(Valid(dll,asset),"Accepts a valid SHA-256"); asset.digest="sha256:bad"; Check(!Valid(dll,asset),"Rejects an incorrect SHA-256");
             rejected=false; try { Child(dir,"../escape"); } catch { rejected=true; } Check(rejected,"Rejects an unsafe remote file name");
             string staging=Path.Combine(dir,"staging"),dest=Path.Combine(dir,"dest"); Directory.CreateDirectory(staging); Directory.CreateDirectory(dest); File.WriteAllText(Path.Combine(dest,"old"),"old"); File.WriteAllText(Path.Combine(staging,"new"),"new"); Publish(staging,dest); Check(File.Exists(Path.Combine(dest,"new")) && !File.Exists(Path.Combine(dest,"old")),"Publishes a package without stale files");
-            using(var resource=typeof(Program).Assembly.GetManifestResourceStream("version.dll")) Check(resource!=null && resource.Length>0,"Embedded version.dll is available");
+            Check(typeof(Program).Assembly.GetManifestResourceStream("version.dll")==null,"The executable does not duplicate the external DLSS Enabler DLL");
             string zip=Path.Combine(dir,"test.zip"), extracted=Path.Combine(dir,"unpacked");
             using(var z=ZipFile.Open(zip,ZipArchiveMode.Create)) { using(var w=new StreamWriter(z.CreateEntry("nested/file.txt").Open())) w.Write("ok"); }
             Extract(zip,extracted); Check(File.ReadAllText(Path.Combine(extracted,"nested","file.txt"))=="ok","ZIP extraction");
@@ -359,6 +359,7 @@ internal static partial class Program
             MigrationTest(Path.Combine(dir,"migration"));
             FeatureTests(Path.Combine(dir,"features"));
             LibraryTests(Path.Combine(dir,"library"));
+            StorageTests(Path.Combine(dir,"storage"));
             Console.WriteLine("All tests passed.");
         } finally { Directory.Delete(dir,true); }
     }
@@ -400,6 +401,7 @@ internal static partial class Program
         var fixture=new FixtureHandler();
         try {
             Root=dir; NoOpen=true; Directory.CreateDirectory(Root); Http=new HttpClient(fixture); Http.DefaultRequestHeaders.UserAgent.ParseAdd("OptiScaler-Test/1.0");
+            Directory.CreateDirectory(Path.Combine(SourceRoot,"dlssenabler"));File.WriteAllText(Path.Combine(SourceRoot,"dlssenabler","version.dll"),"fixture-enabler");
             Install().GetAwaiter().GetResult();
             string build=Path.Combine(BuildsRoot,"test-nightly"),p=Path.Combine(build,"optiscaler");
             Check(File.Exists(Path.Combine(p,"dlss-enabler-headless.dll")) && File.Exists(Path.Combine(p,"streamline","sl.test.dll")) && File.ReadAllText(Path.Combine(build,"OptiScaler.ini")).Contains("FGOutput=fsrfg"),"Complete installation with a simulated API");
@@ -407,7 +409,7 @@ internal static partial class Program
             File.Delete(Path.Combine(p,"dlss-enabler-headless.dll")); Install().GetAwaiter().GetResult();
             Check(fixture.StreamlineDownloads==1 && File.Exists(Path.Combine(p,"dlss-enabler-headless.dll")),"Repairs the same nightly without downloading Streamline again");
             File.WriteAllText(Path.Combine(StreamlineRoot,"sl.test.dll"),"corrupt"); Install().GetAwaiter().GetResult();
-            Check(File.ReadAllText(Path.Combine(StreamlineRoot,"sl.test.dll"))=="fixture-stream" && fixture.StreamlineDownloads==1,"Repairs corrupted cache from the verified ZIP");
+            Check(File.ReadAllText(Path.Combine(StreamlineRoot,"sl.test.dll"))=="fixture-stream" && fixture.StreamlineDownloads==2,"Repairs corrupted DLLs by downloading the SDK again after archive cleanup");
             Directory.CreateDirectory(Path.Combine(SourceRoot,"dlssenabler")); File.WriteAllText(Path.Combine(SourceRoot,"dlssenabler","version.dll"),"local-override"); Install().GetAwaiter().GetResult();
             Check(File.ReadAllText(Path.Combine(p,"dlss-enabler-headless.dll"))=="local-override","The external version.dll takes priority");
             fixture.StreamUnavailable=true; Install().GetAwaiter().GetResult();

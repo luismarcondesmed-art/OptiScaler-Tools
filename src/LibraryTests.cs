@@ -9,6 +9,7 @@ internal static partial class Program
         string previous=Root;var previousHttp=Http;var previousSettings=Settings;bool previousOpen=NoOpen;var fixture=new FixtureHandler();
         try{
             Root=dir;Settings=new AppSettings();NoOpen=true;Organize();Http=new HttpClient(fixture);
+            File.WriteAllText(Path.Combine(SourceRoot,"dlssenabler","version.dll"),"fixture-enabler");
             string package=Path.Combine(BuildsRoot,"nightly-library-old");Directory.CreateDirectory(package);File.WriteAllBytes(Path.Combine(package,"OptiScaler.dll"),PeFixture());File.WriteAllText(Path.Combine(package,"OptiScaler.ini"),"[FrameGen]\nEnabled=auto\nFGInput=auto\nFGOutput=auto\nFGNvngxReplacement=auto\n");File.WriteAllText(Path.Combine(package,"instalacao.json"),"{\"optiscaler\":\"old\",\"streamline\":\"old-stream\"}");
             string[] exes=new string[4];for(int i=0;i<exes.Length;i++){string folder=Path.Combine(dir,"games","Game "+i);Directory.CreateDirectory(folder);exes[i]=Path.Combine(folder,"Game.exe");File.WriteAllBytes(exes[i],PeFixture());InstallGame(exes[i],package,"dxgi","off").GetAwaiter().GetResult();}
             Check(ReadLibrary().games.Count==4&&ReadLibrary().games.All(x=>x.PatcherMode=="off"&&x.Proxy=="dxgi"),"Successful installations are persisted with per-game loader and patcher preferences");
@@ -25,7 +26,6 @@ internal static partial class Program
             ForgetGame(exes[1]);Settings.Values["game.executable"]=exes[1];DiscoverGames();Check(ReadLibrary().games.Count==3,"Removing a game keeps its files and prevents automatic history import from adding it again");ImportGame(exes[1]);Check(ReadLibrary().games.Count==4&&File.Exists(ini),"A forgotten installation can be imported explicitly without reinstalling it");
             File.Delete(LibraryPath);DiscoverGames();Check(ReadLibrary().games.Any(x=>x.Executable==exes[1])&&ReadLibrary().games.Any(x=>x.Executable==exes[0]),"Previous managed installations are discovered from successful logs and the configured game");
             string good=File.ReadAllText(LibraryPath);File.WriteAllText(LibraryPath,"{broken");bool corrupt=false;try{RegisterGame(ReadGameManifest(Path.GetDirectoryName(exes[1])));}catch(AppError e){corrupt=e.Code=="E_GAME_LIBRARY";}Check(corrupt&&File.ReadAllText(LibraryPath)=="{broken","A corrupt game library is reported without overwriting its contents");File.WriteAllText(LibraryPath,good);
-            bool oldHelper=false;try{VerifySetupVersion(exes[1]);}catch(AppError e){oldHelper=e.Code=="E_SETUP_VERSION";}Check(oldHelper,"Batch updates refuse a helper without INI-preservation support before launching it");
         }finally{Http.Dispose();Http=previousHttp;Settings=previousSettings;Root=previous;NoOpen=previousOpen;}
     }
 }

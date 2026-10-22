@@ -7,11 +7,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
 
-internal static class SetupEntry
-{
-    static int Main(string[] args) {return Program.SetupMain(args);}
-}
-
 internal static partial class Program
 {
     internal sealed class GameManifest {
@@ -137,23 +132,26 @@ internal static partial class Program
     }
     sealed class FileTransaction : IDisposable {
         readonly string destination,backup;readonly List<string> touched=new List<string>();readonly HashSet<string> existed=new HashSet<string>(StringComparer.OrdinalIgnoreCase);bool committed;
+        readonly Dictionary<string,string> compressedOriginals=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
         internal FileTransaction(string dir,string backupFolder) {destination=dir;backup=backupFolder;Directory.CreateDirectory(backup);}
         internal void Put(string source,string relative) {
-            string target=Contained(destination,relative);Backup(relative,target);Directory.CreateDirectory(Path.GetDirectoryName(target));File.Copy(source,target,true);
+            string target=Contained(destination,relative);if(File.Exists(target)&&Hash(source)==Hash(target))return;Backup(relative,target);Directory.CreateDirectory(Path.GetDirectoryName(target));File.Copy(source,target,true);
             if(Hash(source)!=Hash(target))throw new AppError("E_COPY_VERIFY",53,"Hash mismatch after copying: "+relative);
         }
         internal void Remove(string relative) {string target=Contained(destination,relative);if(File.Exists(target)){Backup(relative,target);File.Delete(target);}}
         void Backup(string relative,string target) {
             if(touched.Contains(relative,StringComparer.OrdinalIgnoreCase))return;
-            if(File.Exists(target)) {string path=Contained(backup,relative);Directory.CreateDirectory(Path.GetDirectoryName(path));File.Copy(target,path,true);existed.Add(relative);}
+            if(File.Exists(target)) {if(new FileInfo(target).Length>=65536)compressedOriginals[relative]=StoreBackupObject(target);else{string path=Contained(backup,relative);Directory.CreateDirectory(Path.GetDirectoryName(path));File.Copy(target,path,true);}existed.Add(relative);}
             touched.Add(relative);
+            Persist(false);
         }
-        internal void Commit() {File.WriteAllText(Path.Combine(backup,"transaction.json"),Json.Serialize(new{destination=destination,files=touched,originalFiles=existed,committed=true}));committed=true;}
+        void Persist(bool complete){File.WriteAllText(Path.Combine(backup,"transaction.json"),Json.Serialize(new{destination=destination,files=touched,originalFiles=existed,compressedOriginals=compressedOriginals,committed=complete}));}
+        internal void Commit() {Persist(true);committed=true;}
         public void Dispose() {
             if(committed)return;
             var errors=new List<string>();
             foreach(string relative in touched.AsEnumerable().Reverse()) {
-                try {string target=Contained(destination,relative);if(existed.Contains(relative))File.Copy(Contained(backup,relative),target,true);else if(File.Exists(target))File.Delete(target);}
+                try {string target=Contained(destination,relative);if(compressedOriginals.ContainsKey(relative))RestoreBackupObject(compressedOriginals[relative],target);else if(existed.Contains(relative))File.Copy(Contained(backup,relative),target,true);else if(File.Exists(target))File.Delete(target);}
                 catch(Exception e){errors.Add(relative+": "+DescribeException(e));}
             }
             WriteEvent(errors.Count==0?"WARN":"ERROR",errors.Count==0?"ROLLBACK_OK":"E_ROLLBACK","Restoring files after an installation failure.",new{backup=backup,errors=errors});
@@ -210,19 +208,15 @@ internal static partial class Program
         text.Append('\\',slash*2);text.Append('"');return text.ToString();
     }
     static void RunSetupProcess(string executable,string package,string proxy,string patcher,bool preserveIni=false) {
-        string setup=Path.Combine(AppRoot,"setup_optiscaler.exe");if(!File.Exists(setup))throw new AppError("E_SETUP_MISSING",60,"setup_optiscaler.exe was not found beside the application.");
-        if(preserveIni)VerifySetupVersion(setup);
-        var args=new List<string>{"--root",Root,"--game",executable,"--package",package,"--proxy",proxy,"--patcher",patcher};if(preserveIni)args.Add("--preserve-ini");
+        string setup=typeof(Program).Assembly.Location;
+        var args=new List<string>{"--setup-worker","--root",Root,"--game",executable,"--package",package,"--proxy",proxy,"--patcher",patcher};if(preserveIni)args.Add("--preserve-ini");
         var start=new ProcessStartInfo(setup,string.Join(" ",args.Select(QuoteArgument))){UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true,WorkingDirectory=AppRoot};
-        WriteEvent("INFO","SETUP_START","Running setup_optiscaler.exe automatically.",new{executable=executable,proxy=proxy});
+        WriteEvent("INFO","SETUP_START","Running the built-in installer.",new{executable=executable,proxy=proxy});
         using(var process=Process.Start(start)) {
             process.OutputDataReceived+=(s,e)=>{if(e.Data!=null)WriteEvent(e.Data.Contains("[ERROR]")?"ERROR":e.Data.Contains("[WARN]")?"WARN":"INFO","SETUP_EVENT",e.Data,null);};process.ErrorDataReceived+=(s,e)=>{if(e.Data!=null)WriteEvent("ERROR","SETUP_STDERR",e.Data,null);};
             process.BeginOutputReadLine();process.BeginErrorReadLine();process.WaitForExit();
-            WriteEvent(process.ExitCode==0?"INFO":"ERROR","SETUP_EXIT","setup_optiscaler.exe exited with code "+process.ExitCode,new{exitCode=process.ExitCode});
+            WriteEvent(process.ExitCode==0?"INFO":"ERROR","SETUP_EXIT","Built-in installer exited with code "+process.ExitCode,new{exitCode=process.ExitCode});
             if(process.ExitCode!=0)throw new AppError("E_SETUP",process.ExitCode,"Setup returned code "+process.ExitCode+". Check the setup log for the cause and rollback result.");
         }
-    }
-    static void VerifySetupVersion(string setup){
-        Version version;if(!Version.TryParse(FileVersionInfo.GetVersionInfo(setup).FileVersion,out version)||version<new Version(1,1,0,0))throw new AppError("E_SETUP_VERSION",60,"Update all requires setup_optiscaler.exe version 1.1 or newer to preserve game INI settings. Replace both EXEs together.");
     }
 }

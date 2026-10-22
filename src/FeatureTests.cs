@@ -62,7 +62,7 @@ internal static partial class Program
             Check(AddPatcher("Unsupported.exe",package,"auto").GetAwaiter().GetResult()=="unsupported","OptiPatcher is skipped for unsupported executables");
             Http.Dispose();Http=originalHttp;
             string helperGame=Path.Combine(dir,"games","helper with spaces");Directory.CreateDirectory(helperGame);string helperExe=Path.Combine(helperGame,"Helper.exe");File.WriteAllBytes(helperExe,PeFixture());
-            RunSetupProcess(helperExe,package,"dxgi","off");Check(File.Exists(Path.Combine(helperGame,"dxgi.dll")) && ReadGameManifest(helperGame).proxy=="dxgi","setup_optiscaler.exe installs automatically and returns zero");
+            RunSetupProcess(helperExe,package,"dxgi","off");Check(File.Exists(Path.Combine(helperGame,"dxgi.dll")) && ReadGameManifest(helperGame).proxy=="dxgi","The same EXE runs its internal installer automatically and returns zero");
             Check(QuoteArgument("C:\\path with spaces\\").EndsWith("\\\\\""),"Setup arguments preserve spaces and trailing backslashes");
         } finally {if(!object.ReferenceEquals(Http,originalHttp))Http.Dispose();Http=originalHttp;Root=originalRoot;}
     }
